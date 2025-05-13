@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<package>
+  <name>terra_lidar_imu_init</name>
+  <version>0.0.0</version>
+
+  <description>
+    This is a modified version of LOAM which is original algorithm
+    is described in the following paper:
+    J. Zhang and S. Singh. LOAM: Lidar Odometry and Mapping in Real-time.
+      Robotics: Science and Systems Conference (RSS). Berkeley, CA, July 2014.
+  </description>
+
+  <maintainer email="akshay.d@earthsense.com">Akshay D</maintainer>
+
+  <license>BSD</license>
+
+  <author email="zhangji@cmu.edu">Ji Zhang</author>
+  
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>traj_nav_msgs_bayleaf</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2</depend>
+
+  <build_depend>rosidl_default_generators</build_depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <test_depend>ament_cmake_clang_format</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

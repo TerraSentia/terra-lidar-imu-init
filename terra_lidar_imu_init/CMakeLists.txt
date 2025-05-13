@@ -1,19 +1,19 @@
-cmake_minimum_required(VERSION 2.8.3)
-project(lidar_imu_init)
+cmake_minimum_required(VERSION 3.5)
+project(terra_lidar_imu_init)
 
 SET(CMAKE_BUILD_TYPE "Release")
 
-ADD_COMPILE_OPTIONS(-std=c++14 )
-ADD_COMPILE_OPTIONS(-std=c++14 )
-set( CMAKE_CXX_FLAGS "-std=c++14 -O3" ) 
+ADD_COMPILE_OPTIONS(-std=c++17 )
+ADD_COMPILE_OPTIONS(-std=c++17 )
+set( CMAKE_CXX_FLAGS "-std=c++17 -O3" ) 
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions" )
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -pthread -std=c++0x -std=c++14 -fexceptions")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -pthread -std=c++0x -std=c++17 -fexceptions")
 
 message("Current CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
@@ -42,17 +42,18 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 find_package(PythonLibs REQUIRED)
 find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h")
 
-find_package(catkin REQUIRED COMPONENTS
+find_package(
+  ament_cmake REQUIRED
+  rclcpp REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
   sensor_msgs
-  roscpp
-  rospy
+  rclcpp
+  rclpy
   std_msgs
   pcl_ros
-  tf
-  livox_ros_driver
-  message_generation
+  tf2_ros
+  tf2_geometry_msgs
   eigen_conversions
 )
 
@@ -69,32 +70,49 @@ add_message_files(
 )
 
 include_directories(
-     ../../devel/include
 	${catkin_INCLUDE_DIRS} 
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
-  include)
-
-generate_messages(
- DEPENDENCIES
- geometry_msgs
+  include
 )
 
-catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime
-  DEPENDS EIGEN3 PCL
-  INCLUDE_DIRS
+set(dependencies 
+  rclcpp
+  rclpy
+  rosidl_default_generators
+  std_msgs
+  geometry_msgs
+  nav_msgs
+  sensor_msgs
+  pcl_ros
+  tf2_ros
+  tf2_geometry_msgs
+  eigen_conversions
 )
 
-add_executable(li_init
-        src/laserMapping.cpp
-        include/ikd-Tree/ikd_Tree.cpp
-        include/LI_init/LI_init.cpp
-        src/preprocess.cpp)
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+endif()
 
-target_link_libraries(li_init ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${CERES_LIBRARIES})
-target_include_directories(li_init PRIVATE ${PYTHON_INCLUDE_DIRS})
+
+add_executable(terra_lidar_imu_init
+  src/laserMapping.cpp
+  src/ikd_tree.cpp
+  src/lidar_imu_init.cpp
+  src/preprocess.cpp
+)
+target_link_libraries(terra_lidar_imu_init ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${CERES_LIBRARIES})
+target_include_directories(terra_lidar_imu_init PRIVATE ${PYTHON_INCLUDE_DIRS})
+ament_target_dependencies(terra_lidar_imu_init )
+
+install(TARGETS 
+  terra_lidar_imu_init
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+ament_package()
 
 
 
