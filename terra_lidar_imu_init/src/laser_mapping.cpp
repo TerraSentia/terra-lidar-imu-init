@@ -44,11 +44,11 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
-#include <livox_ros_driver/msg/custom_msg.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include "preprocess.h"
-#include <ikd_tree/ikd_tree.h>
+#include <ikd-tree/ikd_tree.h>
 #include <terra_lidar_imu_init/lidar_imu_init.h>
 
 #ifndef DEPLOY
@@ -56,9 +56,9 @@
 namespace plt = matplotlibcpp;
 #endif
 
-#define LASER_POINT_COV     (0.001)
-#define MAXN                (720000)
-#define PUBFRAME_PERIOD     (20)
+#define LASER_POINT_COV 0.001
+#define MAXN 720000
+#define PUBFRAME_PERIOD 20
 
 float DET_RANGE = 300.0f;
 const float MOV_THRESHOLD = 1.5f;
@@ -73,7 +73,23 @@ public:
       mean_acc_norm_(9.81),
       time_lag_IMU_wtr_lidar_(0.0),
       timediff_imu_wrt_lidar_(0.0),
-      timediff_set_flg_(false) {
+      timediff_set_flg_(false),
+      Trans_LI_cov_(3, 0.0005),
+      Rot_LI_cov_(3, 0.00005), 
+      last_rot_(M3D::Zero()), 
+      position_last_(V3D::Zero()),
+      last_odom_(V3D::Zero())
+    {
+        featsFromMap = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_undistort = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_down_body = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_down_world_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        normvec_ = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
+        laserCloudOri_ = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
+        corr_normvect_ = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
+        _featsArray_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        pcl_wait_save_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
+
         loadParams();
         initSubscribers();
         initPublishers();
@@ -119,7 +135,7 @@ public:
     
     void pointBodyToWorld(PointType const *const pi, PointType *const po) {
         V3D p_body(pi->x, pi->y, pi->z);
-        V3D p_global(state_.rot_end_ * (state_.offset_R_L_I_ * p_body + state_.offset_T_L_I_) + state_.pos_end_);
+        V3D p_global(state_.rot_end * (state_.offset_R_L_I * p_body + state_.offset_T_L_I) + state_.pos_end);
 
         po->x = p_global(0);
         po->y = p_global(1);
@@ -133,7 +149,7 @@ public:
     template<typename T>
     void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po) {
         V3D p_body(pi[0], pi[1], pi[2]);
-        V3D p_global(state_.rot_end_ * (state_.offset_R_L_I_ * p_body + state_.offset_T_L_I_) + state_.pos_end_);
+        V3D p_global(state_.rot_end * (state_.offset_R_L_I * p_body + state_.offset_T_L_I) + state_.pos_end);
         po[0] = p_global(0);
         po[1] = p_global(1);
         po[2] = p_global(2);
@@ -141,7 +157,7 @@ public:
 
     void rgbPointBodyToWorld(PointType const *const pi, PointTypeRGB *const po) {
         V3D p_body(pi->x, pi->y, pi->z);
-        V3D p_global(state_.rot_end_ * (state_.offset_R_L_I_ * p_body + state_.offset_T_L_I_) + state_.pos_end_);
+        V3D p_global(state_.rot_end * (state_.offset_R_L_I * p_body + state_.offset_T_L_I) + state_.pos_end);
         po->x = p_global(0);
         po->y = p_global(1);
         po->z = p_global(2);
@@ -169,7 +185,7 @@ public:
         cub_needrm.clear();
 
         pointBodyToWorld(XAxisPoint_body_, XAxisPoint_world_);
-        V3D pos_LiD = state_.pos_end_;
+        V3D pos_LiD = state_.pos_end;
 
         if (!local_map_initialized_) {
             for (int i = 0; i < 3; i++) {
@@ -196,7 +212,7 @@ public:
         float mov_dist = max((cube_len_ - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9,
                             double(DET_RANGE * (MOV_THRESHOLD - 1)));
         for (int i = 0; i < 3; i++) {
-            tmp_boxpoints = LocalMap_Points;
+            tmp_boxpoints = local_map_points_;
             if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE) {
                 new_local_map_points.vertex_max[i] -= mov_dist;
                 new_local_map_points.vertex_min[i] -= mov_dist;
@@ -213,11 +229,11 @@ public:
         pointsCacheCollect();
     }
 
-    void processPointCloud(const sensor_msgs::PointCloud2::ConstPtr &msg, bool isLivox) {
+    void processPointCloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg, bool isLivox) {
         mtx_buffer_.lock();
         scan_count_++;
 
-        double timestamp = isLivox ? (msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9) : msg->header.stamp.seconds();
+        double timestamp = isLivox ? (msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9) : rclcpp::Time(msg->header.stamp).seconds();
 
         if (timestamp < last_timestamp_lidar_) {
             RCLCPP_WARN(this->get_logger(), "Lidar loop back, clearing buffer");
@@ -238,9 +254,9 @@ public:
 
         if (cut_frame_) {
             if (isLivox) {
-                p_pre_->process_cut_frame_livox(msg, ptr, timestamp_lidar, cut_frame_num_, scan_count_);
+                p_preprocess_->process_cut_frame_livox(msg, ptr, timestamp_lidar, cut_frame_num_, scan_count_);
             } else {
-                p_pre_->process_cut_frame_pcl2(msg, ptr, timestamp_lidar, cut_frame_num_, scan_count_);
+                p_preprocess_->process_cut_frame_pcl2(msg, ptr, timestamp_lidar, cut_frame_num_, scan_count_);
             }
 
             while (!ptr.empty() && !timestamp_lidar.empty()) {
@@ -251,7 +267,7 @@ public:
             }
         } else {
             PointCloudXYZI::Ptr single_ptr(new PointCloudXYZI());
-            p_pre_->process(msg, single_ptr);
+            p_preprocess_->process(msg, single_ptr);
             lidar_buffer_.push_back(single_ptr);
             time_buffer_.push_back(last_timestamp_lidar_);
         }
@@ -260,11 +276,11 @@ public:
         sig_buffer_.notify_all();
     }
 
-    void livoxPclCb(const livox_ros_driver::msg::CustomMsg::SharedPtr msg) {
-        processPointCloud(msg, true);
-    }
+    // void livoxPclCb(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg) {
+    //     processPointCloud(msg, true);
+    // }
 
-    void standardPclCb(const sensor_msgs::PointCloud2::ConstPtr &msg) {
+    void standardPclCb(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         processPointCloud(msg, false);
     }
 
@@ -274,7 +290,7 @@ public:
 
         static double IMU_period, time_msg_in, last_time_msg_in;
         static int imu_cnt = 0;
-        time_msg_in = msg_in->header.stamp.seconds();
+        time_msg_in = rclcpp::Time(msg_in->header.stamp).seconds();
 
 
         if (imu_cnt < 100) {
@@ -299,8 +315,8 @@ public:
         sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
 
         //IMU Time Compensation
-        msg->header.stamp = rclcpp::Time().fromSec(msg->header.stamp.seconds() - timediff_imu_wrt_lidar_ - time_lag_IMU_wtr_lidar_);
-        double timestamp = msg->header.stamp.seconds();
+        msg->header.stamp = rclcpp::Time().fromSec(msg->header.stamp.sec - timediff_imu_wrt_lidar_ - time_lag_IMU_wtr_lidar_);
+        double timestamp = rclcpp::Time(msg->header.stamp).seconds();
 
         if (timestamp < last_timestamp_imu_) {
             RCLCPP_WARN(this->get_logger(), "IMU loop back, clear IMU buffer.");
@@ -536,7 +552,7 @@ public:
         
         // Get parameters
         NUM_MAX_ITERATIONS = this->get_parameter("max_iteration").as_int();
-        p_pre_->point_filter_num = this->get_parameter("point_filter_num").as_int();
+        p_preprocess_->point_filter_num = this->get_parameter("point_filter_num").as_int();
         map_file_path_ = this->get_parameter("map_file_path").as_string();
         lid_topic_ = this->get_parameter("common/lid_topic").as_string();
         imu_topic_ = this->get_parameter("common/imu_topic").as_string();
@@ -549,10 +565,10 @@ public:
         grav_cov_ = this->get_parameter("mapping/grav_cov").as_double();
         b_gyr_cov_ = this->get_parameter("mapping/b_gyr_cov").as_double();
         b_acc_cov_ = this->get_parameter("mapping/b_acc_cov").as_double();
-        p_pre_->blind = this->get_parameter("preprocess/blind").as_double();
+        p_preprocess_->blind = this->get_parameter("preprocess/blind").as_double();
         lidar_type_ = this->get_parameter("preprocess/lidar_type").as_int();
-        p_pre_->N_SCANS = this->get_parameter("preprocess/scan_line").as_int();
-        p_pre_->feature_enabled = this->get_parameter("preprocess/feature_extract_en").as_bool();
+        p_preprocess_->N_SCANS = this->get_parameter("preprocess/scan_line").as_int();
+        p_preprocess_->feature_enabled = this->get_parameter("preprocess/feature_extract_en").as_bool();
         cut_frame_ = this->get_parameter("initialization/cut_frame").as_bool();
         cut_frame_num_ = this->get_parameter("initialization/cut_frame_num").as_int();
         orig_odom_freq_ = this->get_parameter("initialization/orig_odom_freq").as_int();
@@ -661,8 +677,6 @@ private:
     int cut_frame_num_ = 1, orig_odom_freq_ = 10, frame_num_ = 0;
     double time_lag_IMU_wtr_lidar_ = 0.0, move_start_time_ = 0.0, online_calib_starts_time_ = 0.0, mean_acc_norm_ = 9.81;
     double online_refine_time_ = 20.0; //unit: s
-    vector<double> Trans_LI_cov_(3, 0.0005);
-    vector<double> Rot_LI_cov_(3, 0.00005);
     V3D mean_acc_ = Zero3d;
     ofstream fout_result_;
 
@@ -670,21 +684,24 @@ private:
     vector<BoxPointType> cub_needrm_;
     deque<PointCloudXYZI::Ptr> lidar_buffer_;
     deque<double> time_buffer_;
-    deque<sensor_msgs::Imu::Ptr> imu_buffer_;
+    deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer_;
     vector<vector<int>> pointSearchInd_surf_;
     vector<PointVector> Nearest_Points_;
     bool point_selected_surf_[100000] = {0};
     float res_last_[100000] = {0.0};
     double total_residual_;
 
+    std::vector<double> Trans_LI_cov_;
+    std::vector<double> Rot_LI_cov_;
+
     //surf feature in map
-    PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
-    PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
-    PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
-    PointCloudXYZI::Ptr feats_down_world_(new PointCloudXYZI());
-    PointCloudXYZI::Ptr normvec_(new PointCloudXYZI(100000, 1));
-    PointCloudXYZI::Ptr laserCloudOri_(new PointCloudXYZI(100000, 1));
-    PointCloudXYZI::Ptr corr_normvect_(new PointCloudXYZI(100000, 1));
+    PointCloudXYZI::Ptr featsFromMap;
+    PointCloudXYZI::Ptr feats_undistort;
+    PointCloudXYZI::Ptr feats_down_body;
+    PointCloudXYZI::Ptr feats_down_world_;
+    PointCloudXYZI::Ptr normvec_;
+    PointCloudXYZI::Ptr laserCloudOri_;
+    PointCloudXYZI::Ptr corr_normvect_;
     PointCloudXYZI::Ptr _featsArray_;
 
     pcl::VoxelGrid<PointType> downSizeFilterSurf_;
@@ -692,19 +709,19 @@ private:
 
     KD_TREE ikdtree_;
 
-    M3D last_rot_(M3D::Zero());
-    V3F XAxisPoint_body_(LIDAR_SP_LEN, 0.0, 0.0);
-    V3F XAxisPoint_world_(LIDAR_SP_LEN, 0.0, 0.0);
+    M3D last_rot_;
+    V3F XAxisPoint_body_{static_cast<float>(LIDAR_SP_LEN), 0.0f, 0.0f};
+    V3F XAxisPoint_world_{static_cast<float>(LIDAR_SP_LEN), 0.0f, 0.0f};
     V3D euler_cur_;
-    V3D position_last_(Zero3d);
-    V3D last_odom_(Zero3d);
+    V3D position_last_;
+    V3D last_odom_;
 
 
     //estimator inputs and output;
     MeasureGroup measures_;
     StatesGroup state_;
 
-    PointCloudXYZI::Ptr pcl_wait_save_(new PointCloudXYZI());
+    PointCloudXYZI::Ptr pcl_wait_save_;
     pcl::PCDWriter pcd_writer_;
     string all_points_dir_;
 
@@ -714,7 +731,7 @@ private:
     geometry_msgs::msg::PoseStamped msg_body_pose_;
     sensor_msgs::msg::Imu IMU_sync_;
 
-    std::shared_ptr<PreProcess> p_preprocess_;
+    std::shared_ptr<Preprocess> p_preprocess_;
     std::shared_ptr<LI_Init> p_LI_init_;
     std::shared_ptr<ImuProcess> p_imu_;
 
@@ -742,7 +759,7 @@ private:
 
     // ROS2 specific
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_;
-    rclcpp::Subscription<livox_ros_driver::msg::CustomMsg>::SharedPtr sub_livox_pcl_;
+    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_livox_pcl_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pubIMU_sync_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes_;
@@ -819,10 +836,10 @@ bool sync_packages(MeasureGroup &meas) {
 
 
     /** push imu data, and pop from imu buffer **/
-    double imu_time = imu_buffer.front()->header.stamp.toSec();
+    double imu_time = imu_buffer.front()->header.stamp.sec;
     meas.imu.clear();
     while ((!imu_buffer.empty()) && (imu_time < lidar_end_time)) {
-        imu_time = imu_buffer.front()->header.stamp.toSec();
+        imu_time = imu_buffer.front()->header.stamp.sec;
         if (imu_time > lidar_end_time) break;
         meas.imu.push_back(imu_buffer.front());
         imu_buffer.pop_front();
@@ -1265,7 +1282,7 @@ int main(int argc, char** argv) {
 
                     time_lag_IMU_wtr_lidar = Init_LI->get_total_time_lag(); //Compensate IMU's time in the buffer
                     for (int i = 0; i < imu_buffer.size(); i++) {
-                        imu_buffer[i]->header.stamp = ros::Time().fromSec(imu_buffer[i]->header.stamp.toSec()- time_lag_IMU_wtr_lidar);
+                        imu_buffer[i]->header.stamp = rclcpp::Time().fromSec(imu_buffer[i]->header.stamp.sec - time_lag_IMU_wtr_lidar);
                     }
 
                     p_imu->imu_en = imu_en;

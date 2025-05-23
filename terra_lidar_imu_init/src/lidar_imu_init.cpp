@@ -1,4 +1,4 @@
-#include "LI_init.h"
+#include "terra_lidar_imu_init/lidar_imu_init.h"
 
 /*
 Description: LI-Init: a temporal-spatial lidar-inertial initialization package
@@ -43,7 +43,8 @@ void LI_Init::set_states_2nd_filter(const deque<CalibState> &IMU_states, const d
 void LI_Init::fout_before_filter() {
     for (auto it_IMU = IMU_state_group.begin(); it_IMU != IMU_state_group.end() - 1; it_IMU++) {
         fout_before_filt_IMU << setprecision(15) << it_IMU->ang_vel.transpose() << " " << it_IMU->ang_vel.norm() << " "
-                             << it_IMU->linear_acc.transpose() << " " << it_IMU->timeStamp << endl;
+                             << it_IMU->linear_acc.transpose() << " " << it_IMU->ang_acc.transpose() << " "
+                             << it_IMU->timeStamp << endl;
     }
     for (auto it = Lidar_state_group.begin(); it != Lidar_state_group.end() - 1; it++) {
         fout_before_filt_Lidar << setprecision(15) << it->ang_vel.transpose() << " " << it->ang_vel.norm() << " "
@@ -51,13 +52,13 @@ void LI_Init::fout_before_filter() {
     }
 }
 
-void LI_Init::push_ALL_IMU_CalibState(const sensor_msgs::Imu::ConstPtr &msg, const double &mean_acc_norm) {
+void LI_Init::push_ALL_IMU_CalibState(const sensor_msgs::msg::Imu::SharedPtr msg, const double &mean_acc_norm) {
     CalibState IMUstate;
     IMUstate.ang_vel = V3D(msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z);
     IMUstate.linear_acc =
             V3D(msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z) / mean_acc_norm *
             G_m_s2;
-    IMUstate.timeStamp = msg->header.stamp.toSec();
+    IMUstate.timeStamp = rclcpp::Time(msg->header.stamp).seconds();
     IMU_state_group_ALL.push_back(IMUstate);
 }
 
@@ -321,7 +322,7 @@ void LI_Init::solve_Rotation_only() {
     R_LI_quat[2] = 0;
     R_LI_quat[3] = 0;
 
-    ceres::LocalParameterization *quatParam = new ceres::QuaternionParameterization();
+    ceres::Manifold *quatParam = new ceres::QuaternionManifold();
     ceres::Problem problem_rot;
     problem_rot.AddParameterBlock(R_LI_quat, 4, quatParam);
 
@@ -357,7 +358,7 @@ void LI_Init::solve_Rot_bias_gyro(double &timediff_imu_wrt_lidar) {
 
     double time_lag2 = 0; //Second time lag (IMU wtr Lidar)
 
-    ceres::LocalParameterization *quatParam = new ceres::QuaternionParameterization();
+    ceres::Manifold *quatParam = new ceres::QuaternionManifold();
     ceres::Problem problem_ang_vel;
 
     problem_ang_vel.AddParameterBlock(R_LI_quat, 4, quatParam);
@@ -420,7 +421,7 @@ void LI_Init::solve_trans_biasacc_grav() {
     Trans_IL[1] = 0.0;
     Trans_IL[2] = 0.0;
 
-    ceres::LocalParameterization *quatParam = new ceres::QuaternionParameterization();
+    ceres::Manifold *quatParam = new ceres::QuaternionManifold();
     ceres::Problem problem_acc;
 
     problem_acc.AddParameterBlock(R_GL0_quat, 4, quatParam);

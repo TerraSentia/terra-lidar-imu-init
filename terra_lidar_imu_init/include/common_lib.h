@@ -5,27 +5,29 @@
 #include <Eigen/Eigen>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <lidar_imu_init/States.h>
-#include <lidar_imu_init/Pose6D.h>
-#include <sensor_msgs/Imu.h>
-#include <nav_msgs/Odometry.h>
-#include <tf/transform_broadcaster.h>
-#include <eigen_conversions/eigen_msg.h>
+#include <terra_lidar_imu_init/msg/states.hpp>
+#include <terra_lidar_imu_init/msg/pose6_d.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 #include <color.h>
 #include <scope_timer.hpp>
+#include <deque>
+#include <vector>
 
 using namespace std;
 using namespace Eigen;
 
 #define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
 #define PBWIDTH 30
-#define PI_M (3.14159265358)
-#define G_m_s2 (9.81)         // Gravity const in GuangDong/China
-#define DIM_STATE (24)      // Dimension of states (Let Dim(SO(3)) = 3)
+#define PI_M 3.14159265358
+#define G_m_s2 9.81         // Gravity const in GuangDong/China
+#define DIM_STATE 24      // Dimension of states (Let Dim(SO(3)) = 3)
 
-#define LIDAR_SP_LEN    (2)
-#define INIT_COV   (1)
-#define NUM_MATCH_POINTS    (5)
+#define LIDAR_SP_LEN 2
+#define INIT_COV 1
+#define NUM_MATCH_POINTS 5
 
 #define VEC_FROM_ARRAY(v)        v[0],v[1],v[2]
 #define MAT_FROM_ARRAY(v)        v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8]
@@ -33,7 +35,7 @@ using namespace Eigen;
 #define DEBUG_FILE_DIR(name)     (string(string(ROOT_DIR) + "Log/"+ name))
 #define RESULT_FILE_DIR(name)    (string(string(ROOT_DIR) + "result/"+ name))
 
-typedef lidar_imu_init::Pose6D     Pose6D;
+typedef terra_lidar_imu_init::msg::Pose6D     Pose6D;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointXYZRGB     PointTypeRGB;
 typedef pcl::PointCloud<PointType>    PointCloudXYZI;
@@ -47,7 +49,7 @@ typedef Vector3f V3F;
 #define VD(a)    Matrix<double, (a), 1>
 
 const M3D Eye3d(M3D::Identity());
-const V3D Zero3d(0, 0, 0);
+const Eigen::Vector3d Zero3d = Eigen::Vector3d::Zero();
 
 // Vector3d Lidar_offset_to_IMU(0.05512, 0.02226, -0.0297); // Horizon
 // Vector3d Lidar_offset_to_IMU(0.04165, 0.02326, -0.0284); // Avia
@@ -62,7 +64,7 @@ struct MeasureGroup     // Lidar data and imu dates for the curent process
     };
     double lidar_beg_time;
     PointCloudXYZI::Ptr lidar;
-    deque<sensor_msgs::Imu::ConstPtr> imu;
+    deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu;
 };
 
 struct StatesGroup
