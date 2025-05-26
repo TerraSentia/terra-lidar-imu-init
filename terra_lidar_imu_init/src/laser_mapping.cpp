@@ -80,15 +80,15 @@ public:
       position_last_(V3D::Zero()),
       last_odom_(V3D::Zero())
     {
-        feats_from_map_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
-        feats_undistort_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
-        feats_down_body_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
-        feats_down_world_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
-        normvec_ = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
-        laser_cloud_ori_ = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
-        corr_normvect_ = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
-        _feats_array_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
-        pcl_wait_save_ = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_from_map = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_undistort = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_down_body = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        feats_down_world = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        normvec = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
+        laser_cloud_ori = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
+        corr_normvect = PointCloudXYZI::Ptr(new PointCloudXYZI(100000, 1));
+        _feats_array = PointCloudXYZI::Ptr(new PointCloudXYZI());
+        pcl_wait_save = PointCloudXYZI::Ptr(new PointCloudXYZI());
 
         loadParams();
         initSubscribers();
@@ -128,14 +128,14 @@ public:
             all_points_dir_ = string(root_dir_ + "/PCD/PCD_all" + string(".pcd"));
             pcd_writer_.writeBinary(all_points_dir_, *pcl_wait_save_);
         }
-        flag_exit_ = true;
+        flag_exit = true;
         RCLCPP_WARN(this->get_logger(), "catch sig %d", sig);
         sig_buffer_.notify_all();
     }
     
     void pointBodyToWorld(PointType const *const pi, PointType *const po) {
         V3D p_body(pi->x, pi->y, pi->z);
-        V3D p_global(state_.rot_end * (state_.offset_R_L_I * p_body + state_.offset_T_L_I) + state_.pos_end);
+        V3D p_global(state.rot_end * (state.offset_R_L_I * p_body + state.offset_T_L_I) + state.pos_end);
 
         po->x = p_global(0);
         po->y = p_global(1);
@@ -149,7 +149,7 @@ public:
     template<typename T>
     void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po) {
         V3D p_body(pi[0], pi[1], pi[2]);
-        V3D p_global(state_.rot_end * (state_.offset_R_L_I * p_body + state_.offset_T_L_I) + state_.pos_end);
+        V3D p_global(state.rot_end * (state.offset_R_L_I * p_body + state.offset_T_L_I) + state.pos_end);
         po[0] = p_global(0);
         po[1] = p_global(1);
         po[2] = p_global(2);
@@ -157,7 +157,7 @@ public:
 
     void rgbPointBodyToWorld(PointType const *const pi, PointTypeRGB *const po) {
         V3D p_body(pi->x, pi->y, pi->z);
-        V3D p_global(state_.rot_end * (state_.offset_R_L_I * p_body + state_.offset_T_L_I) + state_.pos_end);
+        V3D p_global(state.rot_end * (state.offset_R_L_I * p_body + state.offset_T_L_I) + state.pos_end);
         po->x = p_global(0);
         po->y = p_global(1);
         po->z = p_global(2);
@@ -185,7 +185,7 @@ public:
         cub_needrm_.clear();
 
         pointBodyToWorld(XAxisPoint_body_, XAxisPoint_world_);
-        V3D pos_LiD = state_.pos_end;
+        V3D pos_LiD = state.pos_end;
 
         if (!local_map_initialized_) {
             for (int i = 0; i < 3; i++) {
@@ -335,7 +335,7 @@ public:
         sig_buffer_.notify_all();
     }
 
-    void map_incremental() 
+    void mapIncremental() 
     {
         PointVector point_to_add;
         PointVector point_no_need_downsample;
@@ -343,7 +343,7 @@ public:
         point_no_need_downsample.reserve(feats_down_size_);
         for (int i = 0; i < feats_down_size_; i++) {
             /* transform to world frame */
-            pointBodyToWorld(&(feats_down_body_->points[i]), &(feats_down_world_->points[i]));
+            pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
             /* decide if need add to map */
             if (!Nearest_Points_[i].empty() && flg_EKF_inited_) 
             {
@@ -351,17 +351,17 @@ public:
                 bool need_add = true;
                 BoxPointType box_of_point;
                 PointType downsample_result, mid_point;
-                mid_point.x = floor(feats_down_world_->points[i].x / filter_size_map_min_) * filter_size_map_min_ +
-                            0.5 * filter_size_map_min_;
-                mid_point.y = floor(feats_down_world_->points[i].y / filter_size_map_min_) * filter_size_map_min_ +
-                            0.5 * filter_size_map_min_;
-                mid_point.z = floor(feats_down_world_->points[i].z / filter_size_map_min_) * filter_size_map_min_ +
-                            0.5 * filter_size_map_min_;
-                float dist = calc_dist(feats_down_world_->points[i], mid_point);
-                if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min_ &&
-                    fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min_ &&
-                    fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min_) {
-                    point_no_need_downsample.push_back(feats_down_world_->points[i]);
+                mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) * filter_size_map_min +
+                            0.5 * filter_size_map_min;
+                mid_point.y = floor(feats_down_world->points[i].y / filter_size_map_min) * filter_size_map_min +
+                            0.5 * filter_size_map_min;
+                mid_point.z = floor(feats_down_world->points[i].z / filter_size_map_min) * filter_size_map_min +
+                            0.5 * filter_size_map_min;
+                float dist = calc_dist(feats_down_world->points[i], mid_point);
+                if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min &&
+                    fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min &&
+                    fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min) {
+                    point_no_need_downsample.push_back(feats_down_world->points[i]);
                     continue;
                 }
                 for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++) {
@@ -381,9 +381,9 @@ public:
         add_point_size_ = point_to_add.size() + point_no_need_downsample.size();
     }
 
-    void publish_frame_world() {
+    void publishFrameWorld() {
         if (scan_pub_en_) {
-            PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en_ ? feats_undistort_ : feats_down_body_);
+            PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en_ ? feats_undistort : feats_down_body);
             int size = laserCloudFullRes->points.size();
 
             PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB(size, 1));
@@ -411,10 +411,10 @@ public:
         // Save map if enabled
         // if (pcd_save_en_) {
         //     std::filesystem::create_directories(root_dir_ + "/PCD");
-        //     int size = feats_undistort_->points.size();
+        //     int size = feats_undistort->points.size();
         //     PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
         //     for (int i = 0; i < size; i++) {
-        //         pointBodyToWorld(&feats_undistort_->points[i], &laserCloudWorld->points[i]);
+        //         pointBodyToWorld(&feats_undistort->points[i], &laserCloudWorld->points[i]);
         //     }
 
         //     *pcl_wait_save_ += *laserCloudWorld;
@@ -433,15 +433,15 @@ public:
         // }
     }
 
-    void publish_frame_body() {
+    void publishFrameBody() {
         sensor_msgs::msg::PointCloud2 laserCloudmsg;
-        pcl::toROSMsg(*feats_undistort_, laserCloudmsg);
+        pcl::toROSMsg(*feats_undistort, laserCloudmsg);
         laserCloudmsg.header.stamp = rclcpp::Time(lidar_end_time_ * 1e9);
         laserCloudmsg.header.frame_id = "camera_init";
         pubLaserCloudFullRes_body_->publish(laserCloudmsg);
     }
 
-    void publish_effect_world() {
+    void publishEffectWorld() {
         PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(effect_feat_num_, 1));
         for (int i = 0; i < effect_feat_num_; i++) {
             pointBodyToWorld(&laser_cloud_ori_->points[i], &laserCloudWorld->points[i]);
@@ -453,7 +453,7 @@ public:
         pubLaserCloudEffect_->publish(laserCloudFullRes3);
     }
 
-    void publish_map() {
+    void publishMap() {
         sensor_msgs::msg::PointCloud2 laserCloudMap;
         pcl::toROSMsg(*feats_from_map_, laserCloudMap);
         laserCloudMap.header.stamp = rclcpp::Time(lidar_end_time_ * 1e9);
@@ -464,12 +464,12 @@ public:
     template<typename T>
     void set_posestamp(T &out) {
         if (!imu_en_) {
-            out.position.x = state_.pos_end(0);
-            out.position.y = state_.pos_end(1);
-            out.position.z = state_.pos_end(2);
+            out.position.x = state.pos_end(0);
+            out.position.y = state.pos_end(1);
+            out.position.z = state.pos_end(2);
         } else {
             // Publish LiDAR's pose and position
-            V3D pos_cur_lidar = state_.rot_end * state_.offset_T_L_I + state_.pos_end;
+            V3D pos_cur_lidar = state.rot_end * state.offset_T_L_I + state.pos_end;
             out.position.x = pos_cur_lidar(0);
             out.position.y = pos_cur_lidar(1);
             out.position.z = pos_cur_lidar(2);
@@ -480,7 +480,7 @@ public:
         out.orientation.w = geo_quat_.w;
     }
 
-    void publish_odometry() {
+    void publishOdometry() {
         odom_aft_mapped_.header.frame_id = "camera_init";
         odom_aft_mapped_.child_frame_id = "aft_mapped";
         odom_aft_mapped_.header.stamp = rclcpp::Time(lidar_end_time_ * 1e9);
@@ -501,7 +501,7 @@ public:
         tf_broadcaster_->sendTransform(transform);
     }
 
-    void publish_path() {
+    void publishPath() {
         set_posestamp(msg_body_pose_.pose);
         msg_body_pose_.header.stamp = rclcpp::Time(lidar_end_time_ * 1e9);
         msg_body_pose_.header.frame_id = "camera_init";
@@ -531,7 +531,7 @@ public:
         this->declare_parameter("mapping/b_gyr_cov", 0.0001);
         this->declare_parameter("mapping/b_acc_cov", 0.0001);
         this->declare_parameter("preprocess/blind", 1.0);
-        this->declare_parameter("preprocess/lidar_type", AVIA);
+        this->declare_parameter("preprocess/lidar_type", static_cast<int>(AVIA));
         this->declare_parameter("preprocess/scan_line", 16);
         this->declare_parameter("preprocess/feature_extract_en", false);
         this->declare_parameter("initialization/cut_frame", true);
@@ -557,7 +557,7 @@ public:
         lid_topic_ = this->get_parameter("common/lid_topic").as_string();
         imu_topic_ = this->get_parameter("common/imu_topic").as_string();
         filter_size_surf_min_ = this->get_parameter("mapping/filter_size_surf").as_double();
-        filter_size_map_min_ = this->get_parameter("mapping/filter_size_map").as_double();
+        filter_size_map_min = this->get_parameter("mapping/filter_size_map").as_double();
         cube_len_ = this->get_parameter("cube_side_length").as_double();
         DET_RANGE = this->get_parameter("mapping/det_range").as_double();
         gyr_cov_ = this->get_parameter("mapping/gyr_cov").as_double();
@@ -619,23 +619,23 @@ public:
     {
         // Initialize the state
         downSizeFilterSurf_.setLeafSize(filter_size_surf_min_, filter_size_surf_min_, filter_size_surf_min_);
-        downSizeFilterMap_.setLeafSize(filter_size_map_min_, filter_size_map_min_, filter_size_map_min_);
+        downSizeFilterMap_.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
     }
 
     void initImuProcessor()
     {
         // Initialize IMU processor
-        p_imu_ = std::make_shared<ImuProcess>();
-        p_preprocess_ = std::make_shared<PreProcess>();
-        p_imu_->lidar_type = p_preprocess_>lidar_type = lidar_type_;
-        p_imu_->imu_en = imu_en_;
-        p_imu_->LI_init_done = false;
-        p_imu_->set_gyr_cov(V3D(gyr_cov_, gyr_cov_, gyr_cov_));
-        p_imu_->set_acc_cov(V3D(acc_cov_, acc_cov_, acc_cov_));
-        p_imu_->set_R_LI_cov(V3D(VEC_FROM_ARRAY(Rot_LI_cov_)));
-        p_imu_->set_T_LI_cov(V3D(VEC_FROM_ARRAY(Trans_LI_cov_)));
-        p_imu_->set_gyr_bias_cov(V3D(b_gyr_cov_, b_gyr_cov_, b_gyr_cov_));
-        p_imu_->set_acc_bias_cov(V3D(b_acc_cov_, b_acc_cov_, b_acc_cov_));
+        p_imu = std::make_shared<ImuProcess>();
+        p_preprocess_ = std::make_shared<Preprocess>();
+        p_imu->lidar_type = p_preprocess_->lidar_type = lidar_type_;
+        p_imu->imu_en = imu_en_;
+        p_imu->LI_init_done = false;
+        p_imu->set_gyr_cov(V3D(gyr_cov_, gyr_cov_, gyr_cov_));
+        p_imu->set_acc_cov(V3D(acc_cov_, acc_cov_, acc_cov_));
+        p_imu->set_R_LI_cov(V3D(VEC_FROM_ARRAY(Rot_LI_cov_)));
+        p_imu->set_T_LI_cov(V3D(VEC_FROM_ARRAY(Trans_LI_cov_)));
+        p_imu->set_gyr_bias_cov(V3D(b_gyr_cov_, b_gyr_cov_, b_gyr_cov_));
+        p_imu->set_acc_bias_cov(V3D(b_acc_cov_, b_acc_cov_, b_acc_cov_));
         
         // Set up debug logging
         // std::filesystem::create_directories(root_dir_ + "/Log");
@@ -646,84 +646,148 @@ public:
         RCLCPP_INFO(this->get_logger(), "LiDAR-IMU calibration initialized");
     }
 
-private:
-    mutex mtx_buffer_;
-    condition_variable sig_buffer_;
+    float calc_dist(PointType p1, PointType p2) {
+        float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
+        return d;
+    }
 
-    string root_dir_ = ROOT_DIR;
-    string map_file_path_, lid_topic_, imu_topic_;
 
-    int iterCount_ = 0, feats_down_size_ = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum_ = 0, \
-    effect_feat_num_ = 0, scan_count_ = 0, publish_count_ = 0;
+    bool syncPackages(MeasureGroup &meas) {
+        if (lidar_buffer_.empty() || imu_buffer_.empty()){
+            return false;
+        }
+        
+        /** push a lidar scan **/
+        if (!lidar_pushed_) {
+            meas.lidar = lidar_buffer_.front();
 
-    double res_mean_last_ = 0.05;
-    double gyr_cov_ = 0.1, acc_cov_ = 0.1, grav_cov_ = 0.0001, b_gyr_cov_ = 0.0001, b_acc_cov_ = 0.0001;
-    double last_timestamp_lidar_ = 0, last_timestamp_imu_ = 0.0;
-    double filter_size_surf_min_ = 0, filter_size_map_min_ = 0;
-    double cube_len_ = 0, total_distance_ = 0, lidar_end_time_ = 0, first_lidar_time_ = 0.0;
+            if (meas.lidar->points.size() <= 1) {
+                RCLCPP_WARN(this->get_logger(), "Too few input point cloud!\n");
+                lidar_buffer_.pop_front();
+                time_buffer_.pop_front();
+                return false;
+            }
+
+            meas.lidar_beg_time = time_buffer_.front(); //unit:s
+
+            if (lidar_type_ == L515)
+                lidar_end_time_ = meas.lidar_beg_time;
+            else
+                lidar_end_time_ = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); //unit:s
+
+            lidar_pushed_ = true;
+        }
+
+        if (last_timestamp_imu_ < lidar_end_time_)
+            return false;
+
+
+        /** push imu data, and pop from imu buffer **/
+        double imu_time = imu_buffer_.front()->header.stamp.sec;
+        meas.imu.clear();
+        while ((!imu_buffer_.empty()) && (imu_time < lidar_end_time_)) {
+            imu_time = imu_buffer_.front()->header.stamp.sec;
+            if (imu_time > lidar_end_time_) break;
+            meas.imu.push_back(imu_buffer_.front());
+            imu_buffer_.pop_front();
+        }
+        lidar_buffer_.pop_front();
+        time_buffer_.pop_front();
+        lidar_pushed_ = false;
+        return true;
+    }
+    // Expose these for main()
+    bool flag_exit = false;
+    bool flag_reset = false;
+    
+    //estimator inputs and output;
+    StatesGroup state;
+    MeasureGroup measures;
+
+    std::shared_ptr<ImuProcess> p_imu;
+
+    double first_lidar_time = 0.0;
+    
+    //surf feature in map
+    PointCloudXYZI::Ptr feats_undistort;
+    PointCloudXYZI::Ptr feats_down_body;
+    PointCloudXYZI::Ptr feats_down_world;
+    PointCloudXYZI::Ptr normvec;
+    PointCloudXYZI::Ptr laser_cloud_ori;
+    PointCloudXYZI::Ptr corr_normvect;
+    PointCloudXYZI::Ptr _feats_array;
+    
+    
+    
+    pcl::VoxelGrid<PointType> downSizeFilterSurf;
+    pcl::VoxelGrid<PointType> downSizeFilterMap;
+    
+    
+    std::mutex mtx_buffer;
+    std::condition_variable sig_buffer;
+
+    string root_dir = ROOT_DIR;
+    string map_file_path, lid_topic, imu_topic;
+
+    int iterCount = 0, feats_down_size = 0, NUM_MAX_ITERATIONS = 0, laserCloudValidNum = 0, \
+    effect_feat_num = 0, scan_count = 0, publish_count = 0;
+
+    double res_mean_last = 0.05;
+    double gyr_cov = 0.1, acc_cov = 0.1, grav_cov = 0.0001, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
+    double last_timestamp_lidar = 0, last_timestamp_imu = 0.0;
+    double filter_size_surf_min = 0, filter_size_map_min = 0;
+    double cube_len = 0, total_distance = 0, lidar_end_time = 0;
 
     // Time Log Variables
-    int kdtree_size_st_ = 0, kdtree_size_end_ = 0, add_point_size_ = 0;
+    int kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0;
 
 
-    int lidar_type_, pcd_save_interval_ = -1, pcd_index_ = 0;
-    bool lidar_pushed_, flag_reset_, flag_exit_ = false, flg_EKF_inited_ = true;
-    bool imu_en_ = false;
-    bool scan_pub_en_ = false, dense_pub_en_ = false, scan_body_pub_en_ = false;
-    bool runtime_pos_log_ = false, pcd_save_en_ = false, extrinsic_est_en_ = true, path_en_ = true;
+    int lidar_type, pcd_save_interval = -1, pcd_index = 0;
+    bool lidar_pushed, flg_EKF_inited = true;
+    bool imu_en = false;
+    bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+    bool runtime_pos_log = false, pcd_save_en = false, extrinsic_est_en = true, path_en = true;
 
     // LI-Init Parameters
-    bool cut_frame_ = true, data_accum_finished_ = false, data_accum_start_ = false, online_calib_finish_ = false, refine_print_ = false;
-    int cut_frame_num_ = 1, orig_odom_freq_ = 10, frame_num_ = 0;
-    double time_lag_IMU_wtr_lidar_ = 0.0, move_start_time_ = 0.0, online_calib_starts_time_ = 0.0, mean_acc_norm_ = 9.81;
-    double online_refine_time_ = 20.0; //unit: s
-    V3D mean_acc_ = Zero3d;
-    ofstream fout_result_;
+    bool cut_frame = true, data_accum_finished = false, data_accum_start = false, online_calib_finish = false, refine_print = false;
+    int cut_frame_num = 1, orig_odom_freq = 10, frame_num = 0;
+    double time_lag_IMU_wtr_lidar = 0.0, move_start_time = 0.0, online_calib_starts_time = 0.0, mean_acc_norm = 9.81;
+    double online_refine_time = 20.0; //unit: s
+    V3D mean_acc = Zero3d;
+    ofstream fout_result;
 
 
-    vector<BoxPointType> cub_needrm_;
-    deque<PointCloudXYZI::Ptr> lidar_buffer_;
-    deque<double> time_buffer_;
-    deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer_;
-    vector<vector<int>> pointSearchInd_surf_;
-    vector<PointVector> Nearest_Points_;
-    bool point_selected_surf_[100000] = {0};
-    float res_last_[100000] = {0.0};
-    double total_residual_;
+    vector<BoxPointType> cub_needrm;
+    deque<PointCloudXYZI::Ptr> lidar_buffer;
+    deque<double> time_buffer;
+    deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
+    vector<vector<int>> pointSearchInd_surf;
+    vector<PointVector> Nearest_Points;
+    bool point_selected_surf[100000] = {0};
+    float res_last[100000] = {0.0};
+    double total_residual;
 
-    std::vector<double> Trans_LI_cov_;
-    std::vector<double> Rot_LI_cov_;
-
-    //surf feature in map
-    PointCloudXYZI::Ptr feats_from_map_;
-    PointCloudXYZI::Ptr feats_undistort_;
-    PointCloudXYZI::Ptr feats_down_body_;
-    PointCloudXYZI::Ptr feats_down_world_;
-    PointCloudXYZI::Ptr normvec_;
-    PointCloudXYZI::Ptr laser_cloud_ori_;
-    PointCloudXYZI::Ptr corr_normvect_;
-    PointCloudXYZI::Ptr _feats_array_;
-
-    pcl::VoxelGrid<PointType> downSizeFilterSurf_;
-    pcl::VoxelGrid<PointType> downSizeFilterMap_;
-
-    KD_TREE ikdtree_;
-
-    M3D last_rot_;
-    V3F XAxisPoint_body_{static_cast<float>(LIDAR_SP_LEN), 0.0f, 0.0f};
-    V3F XAxisPoint_world_{static_cast<float>(LIDAR_SP_LEN), 0.0f, 0.0f};
-    V3D euler_cur_;
-    V3D position_last_;
-    V3D last_odom_;
+    std::vector<double> Trans_LI_cov;
+    std::vector<double> Rot_LI_cov;
 
 
-    //estimator inputs and output;
-    MeasureGroup measures_;
-    StatesGroup state_;
 
-    PointCloudXYZI::Ptr pcl_wait_save_;
-    pcl::PCDWriter pcd_writer_;
-    string all_points_dir_;
+    KD_TREE ikdtree;
+
+    M3D last_rot;
+    V3F XAxisPoint_body{static_cast<float>(LIDAR_SP_LEN), 0.0f, 0.0f};
+    V3F XAxisPoint_world{static_cast<float>(LIDAR_SP_LEN), 0.0f, 0.0f};
+    V3D euler_cur;
+    V3D position_last;
+    V3D last_odom;
+
+
+
+    PointCloudXYZI::Ptr pcl_wait_save;
+    pcl::PCDWriter pcd_writer;
+    string all_points_dir;
+
+private:
 
     nav_msgs::msg::Path path_;
     nav_msgs::msg::Odometry odom_aft_mapped_;
@@ -733,7 +797,6 @@ private:
 
     std::shared_ptr<Preprocess> p_preprocess_;
     std::shared_ptr<LI_Init> p_LI_init_;
-    std::shared_ptr<ImuProcess> p_imu_;
 
     int points_cache_size_ = 0;
     BoxPointType local_map_points_;
@@ -776,165 +839,113 @@ private:
 
 
 
-float calc_dist(PointType p1, PointType p2) {
-    float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y) + (p1.z - p2.z) * (p1.z - p2.z);
-    return d;
-}
 
 
 
-inline void dump_lio_state_to_log(FILE *fp) {
-    V3D rot_ang(Log(state.rot_end));
-    fprintf(fp, "%lf ", measures_.lidar_beg_time - first_lidar_time);
-    fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
-    fprintf(fp, "%lf %lf %lf ", state.pos_end(0), state.pos_end(1), state.pos_end(2)); // Pos
-    fprintf(fp, "%lf %lf %lf ", state.vel_end(0), state.vel_end(1), state.vel_end(2)); // Vel
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc
-    fprintf(fp, "%lf %lf %lf ", state.bias_g(0), state.bias_g(1), state.bias_g(2));    // Bias_g
-    fprintf(fp, "%lf %lf %lf ", state.bias_a(0), state.bias_a(1), state.bias_a(2));    // Bias_a
-    fprintf(fp, "%lf %lf %lf ", state.gravity(0), state.gravity(1), state.gravity(2)); // Bias_a  
-    fprintf(fp, "\r\n");
-    fflush(fp);
-}
+// inline void dump_lio_state_to_log(FILE *fp) {
+//     V3D rot_ang(Log(state.rot_end));
+//     fprintf(fp, "%lf ", measures.lidar_beg_time - first_lidar_time);
+//     fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
+//     fprintf(fp, "%lf %lf %lf ", state.pos_end(0), state.pos_end(1), state.pos_end(2)); // Pos
+//     fprintf(fp, "%lf %lf %lf ", state.vel_end(0), state.vel_end(1), state.vel_end(2)); // Vel
+//     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega
+//     fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc
+//     fprintf(fp, "%lf %lf %lf ", state.bias_g(0), state.bias_g(1), state.bias_g(2));    // Bias_g
+//     fprintf(fp, "%lf %lf %lf ", state.bias_a(0), state.bias_a(1), state.bias_a(2));    // Bias_a
+//     fprintf(fp, "%lf %lf %lf ", state.gravity(0), state.gravity(1), state.gravity(2)); // Bias_a  
+//     fprintf(fp, "\r\n");
+//     fflush(fp);
+// }
+
+
+// bool sync_packages(MeasureGroup &meas) {
+//     if (lidar_buffer.empty() || imu_buffer.empty()){
+//         return false;
+//     }
 
 
 
+// bool sync_packages_only_lidar(MeasureGroup &meas) {
+//     if (lidar_buffer.empty())
+//         return false;
 
+//     /** push a lidar scan **/
+//     if (!lidar_pushed) {
+//         meas.lidar = lidar_buffer.front();
 
+//         if (meas.lidar->points.size() <= 1) {
+//             ROS_WARN("Too few input point cloud!\n");
+//             lidar_buffer.pop_front();
+//             time_buffer.pop_front();
+//             return false;
+//         }
 
+//         meas.lidar_beg_time = time_buffer.front(); //unit:s
 
-bool sync_packages(MeasureGroup &meas) {
-    if (lidar_buffer.empty() || imu_buffer.empty()){
-        return false;
-    }
+//         if (lidar_type == L515)
+//             lidar_end_time = meas.lidar_beg_time;
+//         else
+//             lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); //unit:s
 
+//         lidar_pushed = true;
+//     }
 
-    /** push a lidar scan **/
-    if (!lidar_pushed) {
-        meas.lidar = lidar_buffer.front();
+//     lidar_buffer.pop_front();
+//     time_buffer.pop_front();
+//     lidar_pushed = false;
+//     return true;
+// }
 
-        if (meas.lidar->points.size() <= 1) {
-            ROS_WARN("Too few input point cloud!\n");
-            lidar_buffer.pop_front();
-            time_buffer.pop_front();
-            return false;
-        }
+// void fileout_calib_result() {
+//     fout_result.setf(ios::fixed);
+//     fout_result << setprecision(6)
+//                 << "Rotation LiDAR to IMU (degree)     = " << RotMtoEuler(state.offset_R_L_I).transpose() * 57.3
+//                 << endl;
+//     fout_result << "Translation LiDAR to IMU (meter)   = " << state.offset_T_L_I.transpose() << endl;
+//     fout_result << "Time Lag IMU to LiDAR (second)     = " << time_lag_IMU_wtr_lidar + timediff_imu_wrt_lidar << endl;
+//     fout_result << "Bias of Gyroscope  (rad/s)         = " << state.bias_g.transpose() << endl;
+//     fout_result << "Bias of Accelerometer (meters/s^2) = " << state.bias_a.transpose() << endl;
+//     fout_result << "Gravity in World Frame(meters/s^2) = " << state.gravity.transpose() << endl << endl;
 
-        meas.lidar_beg_time = time_buffer.front(); //unit:s
+//     MD(4, 4) Transform;
+//     Transform.setIdentity();
+//     Transform.block<3, 3>(0, 0) = state.offset_R_L_I;
+//     Transform.block<3, 1>(0, 3) = state.offset_T_L_I;
+//     fout_result << "Homogeneous Transformation Matrix from LiDAR to IMU: " << endl;
+//     fout_result << Transform << endl << endl << endl;
+// }
 
-        if (lidar_type == L515)
-            lidar_end_time = meas.lidar_beg_time;
-        else
-            lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); //unit:s
+// void print_refine_result() {
+//     cout.setf(ios::fixed);
+//     cout << endl;
+//     printf(BOLDGREEN "[Final Result] " RESET);
+//     cout << setprecision(6)
+//          << "Rotation LiDAR to IMU    = " << RotMtoEuler(state.offset_R_L_I).transpose() * 57.3 << " deg" << endl;
+//     printf(BOLDGREEN "[Final Result] " RESET);
+//     cout << "Translation LiDAR to IMU = " << state.offset_T_L_I.transpose() << " m" << endl;
+//     printf(BOLDGREEN "[Final Result] " RESET);
+//     printf("Time Lag IMU to LiDAR    = %.8lf s \n", time_lag_IMU_wtr_lidar + timediff_imu_wrt_lidar);
+//     printf(BOLDGREEN "[Final Result] " RESET);
+//     cout << "Bias of Gyroscope        = " << state.bias_g.transpose() << " rad/s" << endl;
+// }
 
-        lidar_pushed = true;
-    }
-
-    if (last_timestamp_imu < lidar_end_time)
-        return false;
-
-
-    /** push imu data, and pop from imu buffer **/
-    double imu_time = imu_buffer.front()->header.stamp.sec;
-    meas.imu.clear();
-    while ((!imu_buffer.empty()) && (imu_time < lidar_end_time)) {
-        imu_time = imu_buffer.front()->header.stamp.sec;
-        if (imu_time > lidar_end_time) break;
-        meas.imu.push_back(imu_buffer.front());
-        imu_buffer.pop_front();
-    }
-    lidar_buffer.pop_front();
-    time_buffer.pop_front();
-    lidar_pushed = false;
-    return true;
-}
-
-bool sync_packages_only_lidar(MeasureGroup &meas) {
-    if (lidar_buffer.empty())
-        return false;
-
-    /** push a lidar scan **/
-    if (!lidar_pushed) {
-        meas.lidar = lidar_buffer.front();
-
-        if (meas.lidar->points.size() <= 1) {
-            ROS_WARN("Too few input point cloud!\n");
-            lidar_buffer.pop_front();
-            time_buffer.pop_front();
-            return false;
-        }
-
-        meas.lidar_beg_time = time_buffer.front(); //unit:s
-
-        if (lidar_type == L515)
-            lidar_end_time = meas.lidar_beg_time;
-        else
-            lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000); //unit:s
-
-        lidar_pushed = true;
-    }
-
-    lidar_buffer.pop_front();
-    time_buffer.pop_front();
-    lidar_pushed = false;
-    return true;
-}
-
-void fileout_calib_result() {
-    fout_result.setf(ios::fixed);
-    fout_result << setprecision(6)
-                << "Rotation LiDAR to IMU (degree)     = " << RotMtoEuler(state.offset_R_L_I).transpose() * 57.3
-                << endl;
-    fout_result << "Translation LiDAR to IMU (meter)   = " << state.offset_T_L_I.transpose() << endl;
-    fout_result << "Time Lag IMU to LiDAR (second)     = " << time_lag_IMU_wtr_lidar + timediff_imu_wrt_lidar << endl;
-    fout_result << "Bias of Gyroscope  (rad/s)         = " << state.bias_g.transpose() << endl;
-    fout_result << "Bias of Accelerometer (meters/s^2) = " << state.bias_a.transpose() << endl;
-    fout_result << "Gravity in World Frame(meters/s^2) = " << state.gravity.transpose() << endl << endl;
-
-    MD(4, 4) Transform;
-    Transform.setIdentity();
-    Transform.block<3, 3>(0, 0) = state.offset_R_L_I;
-    Transform.block<3, 1>(0, 3) = state.offset_T_L_I;
-    fout_result << "Homogeneous Transformation Matrix from LiDAR to IMU: " << endl;
-    fout_result << Transform << endl << endl << endl;
-}
-
-void print_refine_result() {
-    cout.setf(ios::fixed);
-    cout << endl;
-    printf(BOLDGREEN "[Final Result] " RESET);
-    cout << setprecision(6)
-         << "Rotation LiDAR to IMU    = " << RotMtoEuler(state.offset_R_L_I).transpose() * 57.3 << " deg" << endl;
-    printf(BOLDGREEN "[Final Result] " RESET);
-    cout << "Translation LiDAR to IMU = " << state.offset_T_L_I.transpose() << " m" << endl;
-    printf(BOLDGREEN "[Final Result] " RESET);
-    printf("Time Lag IMU to LiDAR    = %.8lf s \n", time_lag_IMU_wtr_lidar + timediff_imu_wrt_lidar);
-    printf(BOLDGREEN "[Final Result] " RESET);
-    cout << "Bias of Gyroscope        = " << state.bias_g.transpose() << " rad/s" << endl;
-    printf(BOLDGREEN "[Final Result] " RESET);
-    cout << "Bias of Accelerometer    = " << state.bias_a.transpose() << " m/s^2" << endl;
-    printf(BOLDGREEN "[Final Result] " RESET);
-    cout << "Gravity in World Frame   = " << state.gravity.transpose() << " m/s^2" << endl;
-}
-
-void printProgress(double percentage) {
-    int val = (int) (percentage * 100);
-    int lpad = (int) (percentage * PBWIDTH);
-    int rpad = PBWIDTH - lpad;
-    printf("\033[1A\r");
-    printf(BOLDMAGENTA "[Refinement] ");
-    if (percentage < 1) {
-        printf(BOLDYELLOW "Online Refinement: ");
-        printf(YELLOW "%3d%% [%.*s%*s]\n", val, lpad, PBSTR, rpad, "");
-        cout << RESET;
-    } else {
-        printf(BOLDGREEN " Online Refinement ");
-        printf(GREEN "%3d%% [%.*s%*s]\n", val, lpad, PBSTR, rpad, "");
-        cout << RESET;
-    }
-    fflush(stdout);
-}
+// void printProgress(double percentage) {
+//     int val = (int) (percentage * 100);
+//     int lpad = (int) (percentage * PBWIDTH);
+//     int rpad = PBWIDTH - lpad;
+//     printf("\033[1A\r");
+//     printf(BOLDMAGENTA "[Refinement] ");
+//     if (percentage < 1) {
+//         printf(BOLDYELLOW "Online Refinement: ");
+//         printf(YELLOW "%3d%% [%.*s%*s]\n", val, lpad, PBSTR, rpad, "");
+//         cout << RESET;
+//     } else {
+//         printf(BOLDGREEN " Online Refinement ");
+//         printf(GREEN "%3d%% [%.*s%*s]\n", val, lpad, PBSTR, rpad, "");
+//         cout << RESET;
+//     }
+//     fflush(stdout);
+// }
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
@@ -955,58 +966,58 @@ int main(int argc, char** argv) {
     // Create a thread for processing data
     std::thread processing_thread([&]() {
         while (rclcpp::ok()) {
-            if (node->flag_exit_) break;
-            rclcpp::spin_once(node);
+            if (node->flag_exit) break;
+            rclcpp::spin_some(node);
 
-            if (sync_packages(node->measures_)) {
-                if (node->flag_reset_) {
+            if (node->syncPackages(node->measures)) {
+                if (node->flag_reset) {
                     RCLCPP_WARN(node->get_logger(), "reset when rosbag play back.");
-                    node->p_imu_->Reset();
-                    node->flag_reset_ = false;
+                    node->p_imu->Reset();
+                    node->flag_reset = false;
                     continue;
                 }
             
-            if (node->feats_undistort_->empty() || (node->feats_undistort_ == NULL)) {
-                node->first_lidar_time_ = node->measures_.lidar_beg_time;
-                node->p_imu_->first_lidar_time = node->first_lidar_time_;
+            if (node->feats_undistort->empty() || (node->feats_undistort == NULL)) {
+                node->first_lidar_time = node->measures.lidar_beg_time;
+                node->p_imu->first_lidar_time = node->first_lidar_time;
                 RCLCPP_WARN(node->get_logger(), "LI-Init not ready, no points stored.");
             }
 
-            node->p_imu_->Process(node->measures_, node->state_, node->feat_undistorted_);
+            node->p_imu->Process(node->measures, node->state, node->feat_undistorted_);
 
-            node->state_propogat_ = node->state_;
+            node->state_propogat_ = node->state;
 
             lasermapFovSegment();
 
-            downSizeFilterSurf_.setInputCloud(node->feats_undistort_);
-            downSizeFilterSurf_.filter(node->*feats_down_body_);
+            node->downSizeFilterSurf.setInputCloud(node->feats_undistort);
+            node->downSizeFilterSurf.filter(node->*feats_down_body);
 
-            node->feats_down_size_ = node->feats_down_body_->points.size();
+            node->feats_down_size = node->feats_down_body->points.size();
 
             if (ikdtree_.Root_Node == nullptr) {
-                if (node->feats_down_size_ > 5)
+                if (node->feats_down_size > 5)
                 {
-                    ikdtree_.set_downsample_param(filter_size_map_min_);
-                    feats_down_world_->resize(feats_down_size);
-                    for (int i = 0; i < feats_down_size; i++) {
-                        pointBodyToWorld(&(feats_down_body_->points[i]), &(feats_down_world_->points[i]));
+                    ikdtree_.set_downsample_param(node->filter_size_map_min);
+                    node->feats_down_world->resize(node->feats_down_size);
+                    for (int i = 0; i < node->feats_down_size; i++) {
+                        pointBodyToWorld(&(node->feats_down_body->points[i]), &(node->feats_down_world->points[i]));
                     }
-                    ikdtree_.Build(feats_down_world_->points);
+                    ikdtree_.Build(node->feats_down_world->points);
                 }
                 continue;
             }
             int feats_from_map_num = ikdtree_.validnum();
-            kdtree_size_st = ikdtree_.size();
+            kdtree_size_st_ = ikdtree_.size();
 
 
             /*** ICP and iterated Kalman filter update ***/
-            normvec->resize(feats_down_size);
+            normvec_->resize(feats_down_size);
             feats_down_world_->resize(feats_down_size);
-            euler_cur = RotMtoEuler(state.rot_end);
+            euler_cur_ = RotMtoEuler(node->state.rot_end);
 
 
-            pointSearchInd_surf.resize(feats_down_size);
-            Nearest_Points.resize(feats_down_size);
+            pointSearchInd_surf_.resize(feats_down_size);
+            Nearest_Points_.resize(feats_down_size);
             int rematch_num = 0;
             bool nearest_search_en = true;
 
@@ -1020,11 +1031,11 @@ int main(int argc, char** argv) {
 
 
 
-            for (iterCount = 0; iterCount < NUM_MAX_ITERATIONS; iterCount++) {
+            for (iterCount_ = 0; iterCount_ < NUM_MAX_ITERATIONS; iterCount_++) {
 
                 laser_cloud_ori_->clear();
-                corr_normvect->clear();
-                total_residual = 0.0;
+                corr_normvect_->clear();
+                total_residual_ = 0.0;
 
                 /** closest surface search and residual computation **/
                 #ifdef MP_EN
@@ -1038,26 +1049,26 @@ int main(int argc, char** argv) {
                     /// transform to world frame
                     pointBodyToWorld(&point_body, &point_world);
                     vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
-                    auto &points_near = Nearest_Points[i];
+                    auto &points_near = Nearest_Points_[i];
                     uint8_t search_flag = 0;
 
                     if (nearest_search_en) {
                         /** Find the closest surfaces in the map **/
                         ikdtree_.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis, 5);
                         if (points_near.size() < NUM_MATCH_POINTS)
-                            point_selected_surf[i] = false;
+                            point_selected_surf_[i] = false;
                         else
-                            point_selected_surf[i] = !(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5);
+                            point_selected_surf_[i] = !(pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5);
                     }
 
-                    res_last[i] = -1000.0f;
+                    res_last_[i] = -1000.0f;
 
-                    if (!point_selected_surf[i] || points_near.size() < NUM_MATCH_POINTS) {
-                        point_selected_surf[i] = false;
+                    if (!point_selected_surf_[i] || points_near.size() < NUM_MATCH_POINTS) {
+                        point_selected_surf_[i] = false;
                         continue;
                     }
 
-                    point_selected_surf[i] = false;
+                    point_selected_surf_[i] = false;
                     VD(4) pabcd;
                     pabcd.setZero();
                     if (esti_plane(pabcd, points_near, 0.1)) //(planeValid)
@@ -1067,67 +1078,67 @@ int main(int argc, char** argv) {
                         float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
 
                         if (s > 0.9) {
-                            point_selected_surf[i] = true;
-                            normvec->points[i].x = pabcd(0);
-                            normvec->points[i].y = pabcd(1);
-                            normvec->points[i].z = pabcd(2);
-                            normvec->points[i].intensity = pd2;
-                            res_last[i] = abs(pd2);
+                            point_selected_surf_[i] = true;
+                            normvec_->points[i].x = pabcd(0);
+                            normvec_->points[i].y = pabcd(1);
+                            normvec_->points[i].z = pabcd(2);
+                            normvec_->points[i].intensity = pd2;
+                            res_last_[i] = abs(pd2);
                         }
                     }
                 }
-                effect_feat_num = 0;
+                effect_feat_num_ = 0;
                 for (int i = 0; i < feats_down_size; i++) {
-                    if (point_selected_surf[i]) {
-                        laser_cloud_ori_->points[effect_feat_num] = feats_down_body_->points[i];
-                        corr_normvect->points[effect_feat_num] = normvec->points[i];
-                        effect_feat_num++;
+                    if (point_selected_surf_[i]) {
+                        laser_cloud_ori_->points[effect_feat_num_] = feats_down_body_->points[i];
+                        corr_normvect_->points[effect_feat_num_] = normvec_->points[i];
+                        effect_feat_num_++;
                     }
                 }
 
-                res_mean_last = total_residual / effect_feat_num;
+                res_mean_last_ = total_residual_ / effect_feat_num_;
 
                 /*** Computation of Measurement Jacobian matrix H and measurents vector ***/
 
-                MatrixXd Hsub(effect_feat_num, 12);
-                MatrixXd Hsub_T_R_inv(12, effect_feat_num);
-                VectorXd R_inv(effect_feat_num);
-                VectorXd meas_vec(effect_feat_num);
+                MatrixXd Hsub(effect_feat_num_, 12);
+                MatrixXd Hsub_T_R_inv(12, effect_feat_num_);
+                VectorXd R_inv(effect_feat_num_);
+                VectorXd meas_vec(effect_feat_num_);
 
                 Hsub.setZero();
                 Hsub_T_R_inv.setZero();
                 meas_vec.setZero();
 
-                for (int i = 0; i < effect_feat_num; i++) {
+                for (int i = 0; i < effect_feat_num_; i++) {
                     const PointType &laser_p = laser_cloud_ori_->points[i];
                     V3D point_this_L(laser_p.x, laser_p.y, laser_p.z);
 
-                    V3D point_this = state.offset_R_L_I * point_this_L + state.offset_T_L_I;
+                    V3D point_this = node->state.rot_end * point_this_L + node->state.offset_T_L_I;
                     M3D var;
                     calcBodyVar(point_this, 0.02, 0.05, var);
-                    var = state.rot_end * var * state.rot_end.transpose();
+                    var = node->state.rot_end * var * node->state.rot_end.transpose();
                     M3D point_crossmat;
                     point_crossmat << SKEW_SYM_MATRX(point_this);
 
                     /*** get the normal vector of closest surface/corner ***/
-                    const PointType &norm_p = corr_normvect->points[i];
+                    const PointType &norm_p = corr_normvect_->points[i];
                     V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
                     R_inv(i) = 1000;
                     laser_cloud_ori_->points[i].intensity = sqrt(R_inv(i));
 
                     /*** calculate the Measurement Jacobian matrix H ***/
-                    if (imu_en_) {
+                    if (node->imu_en_) {
                         M3D point_this_L_cross;
                         point_this_L_cross << SKEW_SYM_MATRX(point_this_L);
-                        V3D H_R_LI = point_this_L_cross * state.offset_R_L_I.transpose() * state.rot_end.transpose() *
+                        V3D H_R_LI = point_this_L_cross * node->state.rot_end.transpose() * node->state.rot_end.transpose() *
                                      norm_vec;
-                        V3D H_T_LI = state.rot_end.transpose() * norm_vec;
-                        V3D A(point_crossmat * state.rot_end.transpose() * norm_vec);
+                        V3D H_T_LI = node->state.rot_end.transpose() * norm_vec;
+                        V3D A(point_crossmat * node->state.rot_end.transpose() * norm_vec);
                         Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(
                                 H_R_LI), VEC_FROM_ARRAY(H_T_LI);
                     } else {
-                        V3D A(point_crossmat * state.rot_end.transpose() * norm_vec);
+                        V3D A(point_crossmat * node->state.rot_end.transpose() * norm_vec);
                         Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z, 0, 0, 0, 0, 0, 0;
                     }
 
@@ -1136,115 +1147,115 @@ int main(int argc, char** argv) {
                     meas_vec(i) = -norm_p.intensity;
                 }
 
-                MatrixXd K(DIM_STATE, effect_feat_num);
+                MatrixXd K(DIM_STATE, effect_feat_num_);
 
-                EKF_stop_flg = false;
-                flg_EKF_converged = false;
+                ekf_stop_flag_ = false;
+                flag_ekf_converged_ = false;
 
                 /*** Iterative Kalman Filter Update ***/
 
-                H_T_H.block<12, 12>(0, 0) = Hsub_T_R_inv * Hsub;
-                MD(DIM_STATE, DIM_STATE) &&K_1 = (H_T_H + state.cov.inverse()).inverse();
+                H_T_H_.block<12, 12>(0, 0) = Hsub_T_R_inv * Hsub;
+                MD(DIM_STATE, DIM_STATE) &&K_1 = (H_T_H_ + node->state.cov.inverse()).inverse();
                 K = K_1.block<DIM_STATE, 12>(0, 0) * Hsub_T_R_inv;
-                auto vec = state_propagat - state;
-                solution = K * meas_vec + vec - K * Hsub * vec.block<12, 1>(0, 0);
+                auto vec = node->state_propagat_ - node->state;
+                solution_ = K * meas_vec + vec - K * Hsub * vec.block<12, 1>(0, 0);
 
                 //state update
-                state += solution;
+                node->state += solution_;
 
-                rot_add = solution.block<3, 1>(0, 0);
-                T_add = solution.block<3, 1>(3, 0);
+                rot_add_ = solution_.block<3, 1>(0, 0);
+                T_add_ = solution_.block<3, 1>(3, 0);
 
 
-                if ((rot_add.norm() * 57.3 < 0.01) && (T_add.norm() * 100 < 0.015))
-                    flg_EKF_converged = true;
+                if ((rot_add_.norm() * 57.3 < 0.01) && (T_add_.norm() * 100 < 0.015))
+                    flag_ekf_converged_ = true;
 
-                deltaR = rot_add.norm() * 57.3;
-                deltaT = T_add.norm() * 100;
+                delta_R_ = rot_add_.norm() * 57.3;
+                delta_T_ = T_add_.norm() * 100;
 
-                euler_cur = RotMtoEuler(state.rot_end);
+                euler_cur_ = RotMtoEuler(node->state.rot_end);
 
                 /*** Rematch Judgement ***/
                 nearest_search_en = false;
-                if (flg_EKF_converged || ((rematch_num == 0) && (iterCount == (NUM_MAX_ITERATIONS - 2)))) {
+                if (flag_ekf_converged_ || ((rematch_num == 0) && (iterCount_ == (NUM_MAX_ITERATIONS - 2)))) {
                     nearest_search_en = true;
                     rematch_num++;
                 }
 
                 /*** Convergence Judgements and Covariance Update ***/
-                if (!EKF_stop_flg && (rematch_num >= 2 || (iterCount == NUM_MAX_ITERATIONS - 1))) {
-                    if (flg_EKF_inited) {
+                if (!ekf_stop_flag_ && (rematch_num >= 2 || (iterCount_ == NUM_MAX_ITERATIONS - 1))) {
+                    if (flg_EKF_inited_) {
                         /*** Covariance Update ***/
-                        G.setZero();
-                        G.block<DIM_STATE, 12>(0, 0) = K * Hsub;
-                        state.cov = (I_STATE - G) * state.cov;
-                        total_distance += (state.pos_end - position_last).norm();
-                        position_last = state.pos_end;
-                        if (!imu_en_) {
+                        G_.setZero();
+                        G_.block<DIM_STATE, 12>(0, 0) = K * Hsub;
+                        node->state.cov = (I_STATE_ - G_) * node->state.cov;
+                        total_distance_ += (node->state.pos_end - position_last_).norm();
+                        position_last_ = node->state.pos_end;
+                        if (!node->imu_en_) {
                             geo_quat_ = tf::createQuaternionMsgFromRollPitchYaw
-                                    (euler_cur(0), euler_cur(1), euler_cur(2));
+                                    (euler_cur_(0), euler_cur_(1), euler_cur_(2));
                         } else {
                             //Publish LiDAR's pose, instead of IMU's pose
-                            M3D rot_cur_lidar = state.rot_end * state.offset_R_L_I;
+                            M3D rot_cur_lidar = node->state.rot_end * node->state.offset_R_L_I;
                             V3D euler_cur_lidar = RotMtoEuler(rot_cur_lidar);
                             geo_quat_ = tf::createQuaternionMsgFromRollPitchYaw
                                     (euler_cur_lidar(0), euler_cur_lidar(1), euler_cur_lidar(2));
                         }
                         VD(DIM_STATE) K_sum = K.rowwise().sum();
-                        VD(DIM_STATE) P_diag = state.cov.diagonal();
+                        VD(DIM_STATE) P_diag = node->state.cov.diagonal();
                     }
-                    EKF_stop_flg = true;
+                    ekf_stop_flag_ = true;
                 }
 
-                if (EKF_stop_flg) break;
+                if (ekf_stop_flag_) break;
             }
 
             /******* Publish odometry *******/
-            publish_odometry(pubOdomAftMapped);
+            publishOdometry();
 
             /*** add the feature points to map kdtree ***/
-            map_incremental();
+            mapIncremental();
 
-            kdtree_size_end = ikdtree_.size();
+            kdtree_size_end_ = ikdtree_.size();
 
             /***** Device starts to move, data accmulation begins. ****/
-            if (!imu_en_ && !data_accum_start && state.pos_end.norm() > 0.05) {
+            if (!node->imu_en_ && !data_accum_start_ && node->state.pos_end.norm() > 0.05) {
                 printf(BOLDCYAN "[Initialization] Movement detected, data accumulation starts.\n\n\n\n\n" RESET);
-                data_accum_start = true;
-                move_start_time = lidar_end_time;
+                data_accum_start_ = true;
+                move_start_time_ = lidar_end_time_;
             }
 
             /******* Publish points *******/
-            if (scan_pub_en || pcd_save_en) publish_frame_world(pubLaserCloudFullRes);
-            if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
-            last_odom = state.pos_end;
-            last_rot = state.rot_end;
-            publish_effect_world(pubLaserCloudEffect);
-            if (path_en) publish_path(pubPath);
+            if (node->scan_pub_en || node->pcd_save_en_) publishFrameWorld();
+            if (node->scan_pub_en && node->scan_body_pub_en_) publishFrameBody();
+            last_odom_ = node->state.pos_end;
+            last_rot_ = node->state.rot_end;
+            publishEffectWorld();
+            if (node->path_en_) publishPath();
             //publish_mavros(mavros_pose_publisher);
 
-            frame_num++;
-            V3D ext_euler = RotMtoEuler(state.offset_R_L_I);
-            fout_out << euler_cur.transpose() * 57.3 << " " << state.pos_end.transpose() << " "
+            frame_num_++;
+            V3D ext_euler = RotMtoEuler(node->state.offset_R_L_I);
+            fout_out_ << euler_cur_.transpose() * 57.3 << " " << node->state.pos_end.transpose() << " "
                      << ext_euler.transpose() * 57.3 << " " \
-                     << state.offset_T_L_I.transpose() << " " << state.vel_end.transpose() << " "  \
-                     << " " << state.bias_g.transpose() << " " << state.bias_a.transpose() * 0.9822 / 9.81 << " "
-                     << state.gravity.transpose() << " " << total_distance << endl;
+                     << node->state.offset_T_L_I.transpose() << " " << node->state.vel_end.transpose() << " "  \
+                     << " " << node->state.bias_g.transpose() << " " << node->state.bias_a.transpose() * 0.9822 / 9.81 << " "
+                     << node->state.gravity.transpose() << " " << total_distance_ << endl;
 
             //Broadcast every second
-            if (imu_en_ && frame_num % orig_odom_freq * cut_frame_num == 0 && !online_calib_finish) {
-                double online_calib_completeness = lidar_end_time - online_calib_starts_time;
+            if (node->imu_en_ && frame_num_ % orig_odom_freq_ * cut_frame_num_ == 0 && !online_calib_finish_) {
+                double online_calib_completeness = lidar_end_time_ - online_calib_starts_time_;
                 online_calib_completeness =
-                        online_calib_completeness < online_refine_time ? online_calib_completeness : online_refine_time;
+                        online_calib_completeness < online_refine_time_ ? online_calib_completeness : online_refine_time_;
                 cout << "\x1B[2J\x1B[H"; //clear the screen
-                if(online_refine_time > 0.1)
-                    printProgress(online_calib_completeness / online_refine_time);
-                if (!refine_print && online_calib_completeness > (online_refine_time - 1e-6)) {
-                    refine_print = true;
-                    online_calib_finish = true;
+                if(online_refine_time_ > 0.1)
+                    printProgress(online_calib_completeness / online_refine_time_);
+                if (!refine_print_ && online_calib_completeness > (online_refine_time_ - 1e-6)) {
+                    refine_print_ = true;
+                    online_calib_finish_ = true;
                     cout << endl;
                     print_refine_result();
-                    fout_result << "Refinement result:" << endl;
+                    fout_result_ << "Refinement result:" << endl;
                     fileout_calib_result();
                     string path = ros::package::getPath("lidar_imu_init");
                     path += "/result/Initialization_result.txt";
@@ -1253,48 +1264,48 @@ int main(int argc, char** argv) {
             }
 
 
-            if (!imu_en_ && !data_accum_finished && data_accum_start) {
+            if (!node->imu_en_ && !data_accum_finished_ && data_accum_start_) {
                 //Push Lidar's Angular velocity and linear velocity
-                Init_LI->push_Lidar_CalibState(state.rot_end, state.bias_g, state.vel_end, lidar_end_time);
+                node->p_LI_init_->push_Lidar_CalibState(node->state.rot_end, node->state.bias_g, node->state.vel_end, lidar_end_time_);
                 //Data Accumulation Sufficience Appraisal
-                data_accum_finished = Init_LI->data_sufficiency_assess(Jaco_rot, frame_num, state.bias_g,
-                                                                       orig_odom_freq, cut_frame_num);
+                data_accum_finished_ = node->p_LI_init_->data_sufficiency_assess(Jaco_rot, frame_num_, node->state.bias_g,
+                                                                       orig_odom_freq_, cut_frame_num_);
 
-                if (data_accum_finished) {
-                    Init_LI->LI_Initialization(orig_odom_freq, cut_frame_num, timediff_imu_wrt_lidar, move_start_time);
+                if (data_accum_finished_) {
+                    node->p_LI_init_->LI_Initialization(orig_odom_freq_, cut_frame_num_, timediff_imu_wrt_lidar_, move_start_time_);
 
-                    online_calib_starts_time = lidar_end_time;
+                    online_calib_starts_time_ = lidar_end_time_;
 
                     //Transfer to FAST-LIO2
-                    imu_en_ = true;
-                    state.offset_R_L_I = Init_LI->get_R_LI();
-                    state.offset_T_L_I = Init_LI->get_T_LI();
-                    state.pos_end = -state.rot_end * state.offset_R_L_I.transpose() * state.offset_T_L_I +
-                                    state.pos_end; //Body frame is IMU frame in FAST-LIO mode
-                    state.rot_end = state.rot_end * state.offset_R_L_I.transpose();
-                    state.gravity = Init_LI->get_Grav_L0();
-                    state.bias_g = Init_LI->get_gyro_bias();
-                    state.bias_a = Init_LI->get_acc_bias();
+                    node->imu_en_ = true;
+                    node->state.offset_R_L_I = node->p_LI_init_->get_R_LI();
+                    node->state.offset_T_L_I = node->p_LI_init_->get_T_LI();
+                    node->state.pos_end = -node->state.rot_end * node->state.offset_R_L_I.transpose() * node->state.offset_T_L_I +
+                                    node->state.pos_end; //Body frame is IMU frame in FAST-LIO mode
+                    node->state.rot_end = node->state.rot_end * node->state.offset_R_L_I.transpose();
+                    node->state.gravity = node->p_LI_init_->get_Grav_L0();
+                    node->state.bias_g = node->p_LI_init_->get_gyro_bias();
+                    node->state.bias_a = node->p_LI_init_->get_acc_bias();
 
 
-                    if (lidar_type != AVIA)
-                        cut_frame_num = 2;
+                    if (node->lidar_type_ != AVIA)
+                        cut_frame_num_ = 2;
 
-                    time_lag_IMU_wtr_lidar = Init_LI->get_total_time_lag(); //Compensate IMU's time in the buffer
-                    for (int i = 0; i < imu_buffer.size(); i++) {
-                        imu_buffer[i]->header.stamp = rclcpp::Time().fromSec(imu_buffer[i]->header.stamp.sec - time_lag_IMU_wtr_lidar);
+                    time_lag_IMU_wtr_lidar_ = node->p_LI_init_->get_total_time_lag(); //Compensate IMU's time in the buffer
+                    for (int i = 0; i < imu_buffer_.size(); i++) {
+                        imu_buffer_[i]->header.stamp = rclcpp::Time().fromSec(imu_buffer_[i]->header.stamp.sec - time_lag_IMU_wtr_lidar_);
                     }
 
-                    p_imu->imu_en = imu_en_;
-                    p_imu->LI_init_done = true;
-                    p_imu->set_mean_acc_norm(mean_acc_norm);
-                    p_imu->set_gyr_cov(V3D(0.1, 0.1, 0.1));
-                    p_imu->set_acc_cov(V3D(0.1, 0.1, 0.1));
-                    p_imu->set_gyr_bias_cov(V3D(0.0001, 0.0001, 0.0001));
-                    p_imu->set_acc_bias_cov(V3D(0.0001, 0.0001, 0.0001));
+                    node->p_imu->imu_en = node->imu_en_;
+                    node->p_imu->LI_init_done = true;
+                    node->p_imu->set_mean_acc_norm(mean_acc_norm_);
+                    node->p_imu->set_gyr_cov(V3D(0.1, 0.1, 0.1));
+                    node->p_imu->set_acc_cov(V3D(0.1, 0.1, 0.1));
+                    node->p_imu->set_gyr_bias_cov(V3D(0.0001, 0.0001, 0.0001));
+                    node->p_imu->set_acc_bias_cov(V3D(0.0001, 0.0001, 0.0001));
 
                     //Output Initialization result
-                    fout_result << "Initialization result:" << endl;
+                    fout_result_ << "Initialization result:" << endl;
                     fileout_calib_result();
                 }
             }
@@ -1303,7 +1314,7 @@ int main(int argc, char** argv) {
         // rate.sleep();
 
     // cout << endl << REDPURPLE << "[Exit]: Exit the process." <<RESET <<endl;
-    // if (!online_calib_finish) {
+    // if (!online_calib_finish_) {
     //     cout << YELLOW << "[WARN]: Online refinement not finished yet." << RESET;
     //     print_refine_result();
     // }
