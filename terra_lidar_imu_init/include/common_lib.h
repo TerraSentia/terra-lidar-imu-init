@@ -23,7 +23,8 @@ using namespace Eigen;
 #define PBWIDTH 30
 #define PI_M 3.14159265358
 #define G_m_s2 9.81         // Gravity const in GuangDong/China
-#define DIM_STATE 24      // Dimension of states (Let Dim(SO(3)) = 3)
+
+constexpr int DIM_STATE = 24;      // Dimension of states (Let Dim(SO(3)) = 3)
 
 #define LIDAR_SP_LEN 2
 #define INIT_COV 1
